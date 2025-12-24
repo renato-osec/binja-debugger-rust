@@ -1,0 +1,7 @@
+cargo:rustc-link-search=native=/home/renny/down/binja/binaryninja-commerical/binaryninja/plugins
+cargo:rustc-link-lib=dylib:+verbatim=libdebuggercore.so
+cargo:rustc-link-search=native=/home/renny/down/binja/binaryninja-commerical/binaryninja
+cargo:rustc-link-lib=dylib:+verbatim=libbinaryninjacore.so.1
+cargo:rustc-link-arg=-Wl,-rpath,/home/renny/down/binja/binaryninja-commerical/binaryninja
+cargo:rustc-link-arg=-Wl,-rpath,/home/renny/down/binja/binaryninja-commerical/binaryninja/plugins
+cargo:rerun-if-env-changed=BINJA_PATH

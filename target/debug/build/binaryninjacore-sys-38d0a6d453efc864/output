@@ -1,0 +1,4 @@
+cargo:rerun-if-env-changed=BINARYNINJADIR
+cargo:rerun-if-changed=../../binaryninjacore.h
+cargo:rustc-link-search=/home/renny/doc/rust/binja-debugger-rust/target/debug/build/binaryninjacore-sys-38d0a6d453efc864/out
+cargo:path=/nix/store/hmjb25sddfdpncbvvyivix5la6w2l6kj-binary-ninja-5.3.8780/opt/binaryninja

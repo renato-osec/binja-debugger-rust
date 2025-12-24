@@ -1,0 +1,3 @@
+cargo::rustc-link-lib=dylib=binaryninjacore
+cargo::rustc-link-search=/nix/store/hmjb25sddfdpncbvvyivix5la6w2l6kj-binary-ninja-5.3.8780/opt/binaryninja
+cargo::rustc-link-arg=-Wl,-rpath,/nix/store/hmjb25sddfdpncbvvyivix5la6w2l6kj-binary-ninja-5.3.8780/opt/binaryninja,-L/nix/store/hmjb25sddfdpncbvvyivix5la6w2l6kj-binary-ninja-5.3.8780/opt/binaryninja
