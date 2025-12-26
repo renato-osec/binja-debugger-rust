@@ -1,28 +1,15 @@
 mod macros;
 mod utils;
 
-use binaryninja::architecture::Register;
-use binaryninja::binary_view::{BinaryView, BinaryViewBase, BinaryViewExt};
+use binaryninja::binary_view::{BinaryViewBase, BinaryViewExt};
 use binaryninja::headless::Session;
-use binaryninja::section::Semantics;
 use binja_debugger::{stop_reason_string, BNDebugStopReason, DebuggerController};
 use std::collections::HashMap;
-use binaryninja::low_level_il::expression::ExpressionHandler;
 use std::env;
 
-use utils::{define_vtable_type, CallSiteInfo, VTableObservation, MAX_VTABLE_SIZE};
+use utils::{define_vtable_type, CallSiteInfo, VTableObservation};
 
-use crate::utils::{RaxDerefCall, determine_vtable_size, find_rax_deref_calls};
-
-/// Read a u64 from debugger memory at runtime address
-fn read_u64_runtime(dbg: &DebuggerController, addr: u64) -> Option<u64> {
-    if let Some(bytes) = dbg.read_memory(addr, 8) {
-        if bytes.len() == 8 {
-            return Some(u64::from_le_bytes(bytes.try_into().unwrap()));
-        }
-    }
-    None
-}
+use crate::utils::{RaxDerefCall, determine_vtable_size, find_rax_deref_calls, read_u64};
 
 fn main() {
     env_logger::init();
@@ -63,9 +50,7 @@ fn main() {
     println!("loaded: base=0x{:x} ep=0x{:x}", file_base, file_entry);
 
     // Find call [rax...] patterns
-    println!("scanning for call [rax...] sites...");
     let rax_calls = find_rax_deref_calls(&bv);
-    println!("found {} call [rax...] sites:", rax_calls.len());
     for c in &rax_calls {
         if c.offset == 0 {
             println!("  0x{:x}: call [rax]", c.addr);
@@ -121,16 +106,15 @@ fn main() {
     println!("setting {} breakpoints at runtime addresses...", rax_calls.len());
     let mut bp_to_call: HashMap<u64, &RaxDerefCall> = HashMap::new();
     for c in &rax_calls {
-        let runtime_addr = (c.addr as i64 + rebase_offset) as u64;
-        dbg.add_breakpoint(runtime_addr);
-        bp_to_call.insert(runtime_addr, c);
+        println!("RUNTIME {:#x}", c.addr);
+        dbg.add_breakpoint(c.addr);
+        bp_to_call.insert(c.addr, c);
     }
 
     // Track observations
     let mut call_sites: HashMap<u64, CallSiteInfo> = HashMap::new();
     let mut hit_count = 0;
 
-    println!("\n--- tracing call [rax...] ---");
     loop {
         let reason = dbg.go_and_wait();
 
@@ -145,6 +129,11 @@ fn main() {
             let rax_bytes = dbg.get_register_value("rax");
             let rax = u64::from_le_bytes(rax_bytes[..8].try_into().unwrap_or([0; 8]));
 
+            let target = read_u64(&bv, call.addr + call.offset as u64).unwrap_or(0);
+            
+            //add indirect xrefs
+            curr_func!(&dbg).add_user_code_ref(runtime_ip, target, None);
+
             if rax == 0 {
                 continue;
             }
@@ -154,7 +143,7 @@ fn main() {
 
             let entry = call_sites.entry(file_addr).or_insert_with(|| CallSiteInfo {
                 addr: file_addr,
-                offset: call.offset,
+                called_methods: Vec::new(),
                 observations: Vec::new(),
             });
 
@@ -164,6 +153,8 @@ fn main() {
                     vtable_ptr: rax,
                     method_count,
                 });
+
+                entry.called_methods.push(target);
                 hit_count += 1;
 
                 println!(
@@ -174,7 +165,10 @@ fn main() {
         }
     }
 
-    dbg.quit_and_wait();
+    for (file_addr, info) in &call_sites {
+        bv.set_comment_at(*file_addr, comment!(info.called_methods).as_str());
+    }
+
 
     if call_sites.is_empty() {
         println!("no vtable hits recorded");
@@ -183,25 +177,23 @@ fn main() {
 
     // Reload view before defining types
     println!("\nreloading binary view...");
+    dbg.quit_and_wait();
     drop(bv);
     let bv = session.load(binary_path).expect("failed to reload");
 
     // Define types
-    println!("\n=== DEFINING VTABLE TYPES ===");
     for (file_addr, info) in &call_sites {
         let max_methods = info.observations.iter().map(|o| o.method_count).max().unwrap_or(0);
 
         if max_methods > 0 {
             if define_vtable_type(&bv, *file_addr, max_methods) {
                 println!("defined VTable_{:x} with {} methods", file_addr, max_methods);
-
-                let vtable_addrs: Vec<String> = info.observations
-                    .iter()
-                    .map(|o| format!("0x{:x}({} methods)", o.vtable_ptr, o.method_count))
-                    .collect();
-                bv.set_comment_at(*file_addr, &format!("VTables: {}", vtable_addrs.join(", ")));
             }
         }
+    }
+
+    for t in bv.types().iter() {
+        println!("TYP {:?}", t);
     }
 
     // Save
@@ -210,8 +202,4 @@ fn main() {
     if bv.file().create_database(&db_path) {
         println!("saved");
     }
-
-    println!("\n=== SUMMARY ===");
-    println!("call sites: {}", call_sites.len());
-    println!("observations: {}", call_sites.values().map(|i| i.observations.len()).sum::<usize>());
 }

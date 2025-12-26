@@ -29,7 +29,7 @@ pub struct VTableObservation {
 #[derive(Clone, Debug)]
 pub struct CallSiteInfo {
     pub addr: u64,
-    pub offset: i64,
+    pub called_methods: Vec<u64>,
     pub observations: Vec<VTableObservation>,
 }
 
@@ -186,6 +186,8 @@ pub fn generate_vtable_type_def(call_site_addr: u64, method_count: u64) -> Strin
 }
 
 pub fn define_vtable_type(bv: &BinaryView, call_site_addr: u64, method_count: u64) -> bool {
+    use binaryninja::types::QualifiedNameAndType;
+
     let type_def = generate_vtable_type_def(call_site_addr, method_count);
 
     let Some(platform) = bv.default_platform() else {
@@ -194,15 +196,21 @@ pub fn define_vtable_type(bv: &BinaryView, call_site_addr: u64, method_count: u6
 
     match platform.parse_types_from_source(&type_def, "", &[], "") {
         Ok(result) => {
-            for p in result.types.iter() {
-                bv.define_user_type(p.name.to_string(), &p.ty);
-            }
+            let types_to_define: Vec<QualifiedNameAndType> = result
+                .types
+                .iter()
+                .map(|p| QualifiedNameAndType {
+                    name: p.name.clone(),
+                    ty: p.ty.clone(),
+                })
+                .collect();
+
+            println!("TYPE: {:?}", types_to_define);
+
+            bv.define_user_types(types_to_define.into_iter());
             true
         }
-        Err(e) => {
-            eprintln!("parse error: {:?}", e);
-            false
-        }
+        Err(_) => false,
     }
 }
 
