@@ -205,8 +205,6 @@ pub fn define_vtable_type(bv: &BinaryView, call_site_addr: u64, method_count: u6
                 })
                 .collect();
 
-            println!("TYPE: {:?}", types_to_define);
-
             bv.define_user_types(types_to_define.into_iter());
             true
         }

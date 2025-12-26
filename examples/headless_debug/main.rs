@@ -94,7 +94,7 @@ fn main() {
     println!("stopped at runtime IP: 0x{:x}", runtime_ip);
 
     let rebase_offset = if runtime_ip != file_entry && runtime_ip != 0 {
-        let offset = runtime_ip as i64 - file_entry as i64;
+        let offset = runtime_ip - file_entry;
         println!("PIE: rebase_offset=0x{:x}", offset);
         offset
     } else {
@@ -106,9 +106,8 @@ fn main() {
     println!("setting {} breakpoints at runtime addresses...", rax_calls.len());
     let mut bp_to_call: HashMap<u64, &RaxDerefCall> = HashMap::new();
     for c in &rax_calls {
-        println!("RUNTIME {:#x}", c.addr);
-        dbg.add_breakpoint(c.addr);
-        bp_to_call.insert(c.addr, c);
+        dbg.add_breakpoint(c.addr + rebase_offset);
+        bp_to_call.insert(rebase_offset + c.addr, c);
     }
 
     // Track observations
@@ -190,10 +189,6 @@ fn main() {
                 println!("defined VTable_{:x} with {} methods", file_addr, max_methods);
             }
         }
-    }
-
-    for t in bv.types().iter() {
-        println!("TYP {:?}", t);
     }
 
     // Save
